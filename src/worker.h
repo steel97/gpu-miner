@@ -142,7 +142,7 @@ void reset_worker(mining_worker_t *worker)
 
     for (int i = 0; i < NONCE_SIZE; i++)
     {
-        hasher_buf(worker, true)[i] = template_ptr->nonce[i];
+        hasher_buf(worker, true)[i] = template_ptr->nonce.blob[i];
     }
 
     for (int i = NONCE_SIZE; i < 24 - NONCE_SIZE; i++)
