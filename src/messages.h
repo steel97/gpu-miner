@@ -10,7 +10,10 @@
 
 #include "log.h"
 
-typedef struct blob_t {
+const int NONCE_SIZE = 4;
+
+typedef struct blob_t
+{
     uint8_t *blob;
     ssize_t len;
 } blob_t;
@@ -29,7 +32,8 @@ char *bytes_to_hex(uint8_t *bytes, ssize_t len)
     uint8_t *byte_cursor = bytes;
     char *hex_cursor = hex_string;
     ssize_t count = 0;
-    while (count < len) {
+    while (count < len)
+    {
         sprintf(hex_cursor, "%02x", *byte_cursor);
         byte_cursor++;
         count++;
@@ -39,7 +43,7 @@ char *bytes_to_hex(uint8_t *bytes, ssize_t len)
     return hex_string;
 }
 
-void print_hex(const char* prefix, uint8_t *data, ssize_t nread)
+void print_hex(const char *prefix, uint8_t *data, ssize_t nread)
 {
     char *hex_string = bytes_to_hex(data, nread);
     LOG("%s: %s\n", prefix, hex_string);
@@ -48,11 +52,16 @@ void print_hex(const char* prefix, uint8_t *data, ssize_t nread)
 
 char hex_to_byte(char hex)
 {
-    if (hex >= '0' && hex <= '9') {
+    if (hex >= '0' && hex <= '9')
+    {
         return hex - '0';
-    } else if (hex >= 'a' && hex <= 'f') {
+    }
+    else if (hex >= 'a' && hex <= 'f')
+    {
         return hex - 'a' + 10;
-    } else {
+    }
+    else
+    {
         exit(1);
     }
 }
@@ -66,14 +75,21 @@ void hex_to_bytes(const char *hex_data, blob_t *buf)
     buf->blob = (uint8_t *)malloc(buf->len);
     memset(buf->blob, 0, buf->len);
 
-    for (size_t pos = 0; pos < hex_len; pos += 2) {
+    for (size_t pos = 0; pos < hex_len; pos += 2)
+    {
         char left = hex_to_byte(hex_data[pos]);
         char right = hex_to_byte(hex_data[pos + 1]);
         buf->blob[pos / 2] = (left << 4) + right;
     }
 }
 
-typedef struct job_t {
+typedef struct nonce_t
+{
+    blob_t nonce;
+} nonce_t;
+
+typedef struct job_t
+{
     int from_group;
     int to_group;
     blob_t header_blob;
@@ -81,42 +97,51 @@ typedef struct job_t {
     blob_t target;
 } job_t;
 
-void free_job(job_t *job) {
+void free_job(job_t *job)
+{
     free_blob(&job->header_blob);
     free_blob(&job->txs_blob);
     free_blob(&job->target);
     free(job);
 }
 
-typedef struct jobs_t {
+typedef struct jobs_t
+{
     job_t **jobs;
     size_t len;
 } jobs_t;
 
 void free_jobs(jobs_t *jobs)
 {
-    for (size_t i = 0; i < jobs->len; i++) {
+    for (size_t i = 0; i < jobs->len; i++)
+    {
         free_job(jobs->jobs[i]);
     }
     free(jobs->jobs);
 }
 
-typedef struct submit_result_t {
+typedef struct submit_result_t
+{
     int from_group;
     int to_group;
     bool status;
 } submit_result_t;
 
-typedef enum server_message_kind {
+typedef enum server_message_kind
+{
     JOBS,
     SUBMIT_RESULT,
+    NONCE
 } server_message_kind;
 
-typedef struct server_message_t {
+typedef struct server_message_t
+{
     server_message_kind kind;
-    union {
+    union
+    {
         jobs_t *jobs;
         submit_result_t *submit_result;
+        nonce_t *nonce;
     };
 } server_message_t;
 
@@ -227,8 +252,9 @@ void extract_jobs(uint8_t **bytes, jobs_t *jobs)
     // LOG("jobs: %ld\n", jobs_size);
 
     jobs->len = jobs_size;
-    jobs->jobs = (job_t **)malloc(jobs_size * sizeof(job_t*));
-    for(ssize_t i = 0; i < jobs_size; i++) {
+    jobs->jobs = (job_t **)malloc(jobs_size * sizeof(job_t *));
+    for (ssize_t i = 0; i < jobs_size; i++)
+    {
         jobs->jobs[i] = (job_t *)malloc(sizeof(job_t));
         extract_job(bytes, (jobs->jobs[i]));
     }
@@ -241,12 +267,24 @@ void extract_submit_result(uint8_t **bytes, submit_result_t *result)
     result->status = extract_bool(bytes);
 }
 
+void extract_nonce(uint8_t **bytes, nonce_t *result)
+{
+    blob_t *noncePtr = &result->nonce;
+    int size = NONCE_SIZE; // nonce size in bytes
+
+    noncePtr->len = size;
+    noncePtr->blob = (uint8_t *)malloc(size * sizeof(uint8_t));
+    memcpy(noncePtr->blob, *bytes, size);
+    *bytes = *bytes + size;
+}
+
 server_message_t *decode_server_message(blob_t *blob)
 {
     uint8_t *bytes = blob->blob;
     ssize_t len = blob->len;
 
-    if (len <= 4) {
+    if (len <= 4)
+    {
         return NULL; // not enough bytes for decoding
     }
 
@@ -255,7 +293,8 @@ server_message_t *decode_server_message(blob_t *blob)
     assert(pos == bytes + 4);
 
     ssize_t message_byte_size = message_size + 4;
-    if (len < message_byte_size) {
+    if (len < message_byte_size)
+    {
         return NULL; // not enough bytes for decoding
     }
 
@@ -275,6 +314,11 @@ server_message_t *decode_server_message(blob_t *blob)
         server_message->submit_result = (submit_result_t *)malloc(sizeof(submit_result_t));
         extract_submit_result(&pos, server_message->submit_result);
         break;
+    case 2:
+        server_message->kind = NONCE;
+        server_message->nonce = (nonce_t *)malloc(sizeof(nonce_t));
+        extract_nonce(&pos, server_message->nonce);
+        break;
 
     default:
         LOGERR("Invalid server message kind\n");
@@ -282,10 +326,13 @@ server_message_t *decode_server_message(blob_t *blob)
     }
 
     assert(pos == (bytes + message_byte_size));
-    if (message_byte_size < len) {
+    if (message_byte_size < len)
+    {
         blob->len = len - message_byte_size;
         memmove(blob->blob, pos, blob->len);
-    } else {
+    }
+    else
+    {
         blob->len = 0;
     }
 

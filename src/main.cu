@@ -66,7 +66,7 @@ void submit_new_block(mining_worker_t *worker)
 
     ssize_t buf_size = write_new_block(worker, write_buffer);
     uv_buf_t buf = uv_buf_init((char *)write_buffer, buf_size);
-    print_hex("new solution", (uint8_t *) hasher_buf(worker, true), 32);
+    print_hex("new solution", (uint8_t *)hasher_buf(worker, true), 32);
 
     uv_write_t *write_req = (uv_write_t *)malloc(sizeof(uv_write_t));
     uint32_t buf_count = 1;
@@ -87,7 +87,9 @@ void mine(mining_worker_t *worker)
         LOG("waiting for new tasks\n");
         worker->timer.data = worker;
         uv_timer_start(&worker->timer, mine_with_timer, 500, 0);
-    } else {
+    }
+    else
+    {
         mining_counts[to_mine_index].fetch_add(mining_steps);
         setup_template(worker, load_template(to_mine_index));
 
@@ -237,7 +239,8 @@ server_message_t *decode_buf(const uv_buf_t *buf, ssize_t nread)
 
 void connect_to_broker();
 
-void try_to_reconnect(uv_timer_t *timer){
+void try_to_reconnect(uv_timer_t *timer)
+{
     read_blob.len = 0;
     free(uv_socket);
     free(uv_connect);
@@ -275,6 +278,10 @@ void on_read(uv_stream_t *server, ssize_t nread, const uv_buf_t *buf)
         case SUBMIT_RESULT:
             LOG("submitted: %d -> %d: %d \n", message->submit_result->from_group, message->submit_result->to_group, message->submit_result->status);
             break;
+        case NONCE:
+            update_nonce(message->nonce->nonce);
+            LOG("got nonce \n");
+            break;
         }
         free_server_message_except_jobs(message);
     }
@@ -297,7 +304,8 @@ void on_connect(uv_connect_t *req, int status)
     uv_read_start(req->handle, alloc_buffer, on_read);
 }
 
-void connect_to_broker(){
+void connect_to_broker()
+{
     uv_socket = (uv_tcp_t *)malloc(sizeof(uv_tcp_t));
     uv_tcp_init(loop, uv_socket);
     uv_tcp_nodelay(uv_socket, 1);
@@ -342,7 +350,7 @@ int main(int argc, char **argv)
 {
     setbuf(stdout, NULL);
 
-    #ifdef _WIN32
+#ifdef _WIN32
     WSADATA wsa;
     // current winsocket version is 2.2
     int rc = WSAStartup(MAKEWORD(2, 2), &wsa);
@@ -351,7 +359,7 @@ int main(int argc, char **argv)
         LOGERR("Initialize winsock failed: %d\n", rc);
         exit(1);
     }
-    #endif
+#endif
 
     LOG("Running gpu-miner version : %s\n", MINER_VERSION);
 
@@ -396,7 +404,8 @@ int main(int argc, char **argv)
             for (; optind < argc && *argv[optind] != '-'; optind++)
             {
                 int device = atoi(argv[optind]);
-                if (device < 0 || device >= gpu_count) {
+                if (device < 0 || device >= gpu_count)
+                {
                     LOGERR("Invalid gpu index %d\n", device);
                     exit(1);
                 }
@@ -410,9 +419,9 @@ int main(int argc, char **argv)
     }
     LOG("will connect to broker @%s:%d\n", broker_ip, port);
 
-    #ifdef __linux__
+#ifdef __linux__
     signal(SIGPIPE, SIG_IGN);
-    #endif
+#endif
 
     mining_workers_init(gpu_count);
     setup_gpu_worker_count(gpu_count, gpu_count * parallel_mining_works_per_gpu);
